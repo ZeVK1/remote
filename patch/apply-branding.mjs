@@ -137,13 +137,53 @@ edit(homeDart, t => replaceOnce(t,
             ),
           ),
           const Spacer(),
+          _buildNvaAccount(context),
+          const SizedBox(width: 8),
           buildPopupMenu(context),
         ],
       ),
     );
   }
 
+  Widget _buildNvaAccount(BuildContext context) {
+    return Obx(() {
+      final um = gFFI.userModel;
+      if (!um.isLogin) {
+        return Row(children: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.account_circle_outlined, size: 18),
+            label: Text(translate("Login")),
+            onPressed: () async {
+              await loginDialog();
+            },
+          ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () => launchUrl(Uri.parse('${cfg.apiServer || 'https://' + cfg.rendezvousServer}/register')),
+            child: const Text('Kayıt ol'),
+          ),
+        ]);
+      }
+      return Row(children: [
+        const _NvaLicenseChip(),
+        const SizedBox(width: 8),
+        Tooltip(
+          message: translate("Logout"),
+          child: TextButton.icon(
+            icon: const Icon(Icons.account_circle, size: 18, color: MyTheme.accent),
+            label: Text(um.userName.value),
+            onPressed: logOutConfirmDialog,
+          ),
+        ),
+      ]);
+    });
+  }
+
   buildRightPane(BuildContext context) {`), 'üst bant (_buildNvaHeader)');
+edit(homeDart, t => replaceOnce(t,
+  "import 'package:flutter_hbb/common/widgets/custom_password.dart';",
+  "import 'package:flutter_hbb/common/widgets/custom_password.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:http/http.dart' as http;"), 'import: login + http');
+edit(homeDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_account.dart'), 'utf8'), 'lisans rozeti sınıfı');
 
 if (cfg.apiServer) {
   edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
