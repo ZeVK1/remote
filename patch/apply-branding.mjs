@@ -185,6 +185,41 @@ edit(homeDart, t => replaceOnce(t,
   "import 'package:flutter_hbb/common/widgets/custom_password.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:http/http.dart' as http;"), 'import: login + http');
 edit(homeDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_account.dart'), 'utf8'), 'lisans rozeti sınıfı');
 
+// 6) Sağ bölme: AnyDesk'teki gibi üst sekmeler (Haberler / Cihazlar) + haber kutuları
+const connDart = 'flutter/lib/desktop/pages/connection_page.dart';
+edit(connDart, t => replaceOnce(t,
+  "import 'package:flutter_hbb/consts.dart';",
+  "import 'package:flutter_hbb/consts.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';"), 'connection: importlar');
+edit(connDart, t => replaceOnce(t,
+  "  String selectedConnectionType = 'Connect';",
+  "  String selectedConnectionType = 'Connect';\n  int _nvaTab = 0; // 0: Haberler, 1: Cihazlar"), 'connection: sekme durumu');
+edit(connDart, t => replaceOnce(t,
+`            Divider().paddingOnly(right: 12),
+            Expanded(child: PeerTabPage()),`,
+`            _NvaTabBar(
+                index: _nvaTab,
+                onChanged: (i) => setState(() => _nvaTab = i)),
+            Divider(height: 1).paddingOnly(right: 12),
+            Expanded(
+                child: _nvaTab == 0 ? const NvaNewsPanel() : PeerTabPage()),`), 'connection: sekmeler');
+// Alttaki "kendi sunucunuzu kurun" reklamı kaldırılsın
+edit(connDart, t => replaceOnce(t,
+  '            if (!isIncomingOnly) setupServerWidget(),',
+  '            // (kendi sunucunuzu kurun reklamı kaldırıldı)'), 'connection: sunucu reklamı');
+edit(connDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_news.dart'), 'utf8'), 'connection: haber paneli sınıfları');
+// Sol paneldeki tekrar eden "Sizin Masaüstünüz" başlığı (artık üst bantta)
+edit(homeDart, t => replaceOnce(t,
+`              if (!isOutgoingOnly)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    translate("Your Desktop"),`,
+`              if (false)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    translate("Your Desktop"),`), 'sol panel: tekrar eden başlık');
+
 if (cfg.apiServer) {
   edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
     'pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();',
