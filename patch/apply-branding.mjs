@@ -91,8 +91,9 @@ edit(homeDart, t => replaceOnce(t,
         child: Column(children: [
       _buildNvaHeader(context),
       const Divider(height: 1),
-      Expanded(child: body),
-    ]));`), 'ana düzen: üst bant + gövde');
+      _buildNvaHelp(context),
+      Expanded(child: buildRightPane(context)),
+    ]));`), 'ana düzen: üst bant + gövde (yan menü yok)');
 // Sol panelde ID kutusu artık üst bantta (yalnızca "yalnız gelen" modunda solda kalır)
 edit(homeDart, t => replaceOnce(t,
   '      if (!isOutgoingOnly) buildIDBoard(context),',
@@ -136,7 +137,9 @@ edit(homeDart, t => replaceOnce(t,
               },
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 20),
+          _buildNvaPassword(context),
+          const SizedBox(width: 16),
           OutlinedButton.icon(
             icon: const Icon(Icons.share_outlined, size: 18),
             label: const Text('Davet et'),
@@ -191,6 +194,80 @@ edit(homeDart, t => replaceOnce(t,
         ),
       ]);
     });
+  }
+
+  // Tek kullanımlık parola (eski yan menüden üst banda taşındı)
+  Widget _buildNvaPassword(BuildContext context) {
+    final textColor = Theme.of(context).textTheme.titleLarge?.color;
+    return ChangeNotifierProvider.value(
+      value: gFFI.serverModel,
+      child: Consumer<ServerModel>(builder: (context, model, child) {
+        final showOneTime = model.approveMode != 'click' &&
+            model.verificationMethod != kUsePermanentPassword;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(translate("One-time Password"),
+                style: TextStyle(
+                    fontSize: 12, color: textColor?.withOpacity(0.55))),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              AnimatedBuilder(
+                animation: model.serverPasswd,
+                builder: (_, __) => GestureDetector(
+                  onTap: () {
+                    if (showOneTime) {
+                      Clipboard.setData(
+                          ClipboardData(text: model.serverPasswd.text));
+                      showToast(translate("Copied"));
+                    }
+                  },
+                  child: Text(
+                    showOneTime ? model.serverPasswd.text : '••••••',
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              if (showOneTime)
+                IconButton(
+                  tooltip: translate('Refresh Password'),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  onPressed: () => bind.mainUpdateTemporaryPassword(),
+                ),
+              if (!bind.isDisableSettings())
+                IconButton(
+                  tooltip: translate('Change Password'),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
+                  icon: const Icon(Icons.edit, size: 18),
+                  onPressed: () =>
+                      DesktopSettingPage.switch2page(SettingsTabKey.safety),
+                ),
+            ]),
+          ],
+        );
+      }),
+    );
+  }
+
+  // Yükleme/güncelleme gibi yardım kartları (eski yan menüdeydi); kart yoksa yer kaplamaz
+  Widget _buildNvaHelp(BuildContext context) {
+    return ChangeNotifierProvider.value(
+      value: gFFI.serverModel,
+      child: Obx(() => Container(
+            alignment: Alignment.centerLeft,
+            constraints: const BoxConstraints(maxWidth: 560),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: buildHelpCards(stateGlobal.updateUrl.value),
+          )),
+    );
   }
 
   buildRightPane(BuildContext context) {`), 'üst bant (_buildNvaHeader)');
@@ -275,6 +352,23 @@ edit(homeDart, t => replaceOnce(t,
                   alignment: Alignment.centerLeft,
                   child: Text(
                     translate("Your Desktop"),`), 'sol panel: tekrar eden başlık');
+
+// Eski kayıtlı cihaz ayarları: RustDesk'in ilk varsayılanı (orijinal boyut + otomatik kaydırma) fareyle ekranın kaymasına
+// yol açıyordu. Bu iki değer birlikte kayıtlıysa bir kerelik yeni varsayılana çevrilir.
+edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
+`                let mut config: PeerConfig = config;
+                let mut store = false;`,
+`                let mut config: PeerConfig = config;
+                let mut store = false;
+                if config.view_style == "original" && config.scroll_style == "scrollauto" {
+                    config.view_style = "adaptive".to_owned();
+                    config.scroll_style = "scrollbar".to_owned();
+                    store = true;
+                }`), 'eski cihaz ayarı geçişi (ekran kayması)');
+// Ana pencere varsayılan boyutu (yan menü kalktı, üst bant geniş): 800x600 -> 1100x720
+edit('flutter/windows/runner/main.cpp', t => replaceOnce(t,
+  'Win32Window::Size size(800u, 600u);',
+  'Win32Window::Size size(1100u, 720u);'), 'varsayılan pencere boyutu');
 
 // 7) Uzaktan (otomatik) güncelleme: kendi sunucumuz + GitHub sürümleri + İMZA DOĞRULAMA
 if (cfg.appVersion) {
