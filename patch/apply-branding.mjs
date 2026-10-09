@@ -64,6 +64,30 @@ edit('flutter/lib/common.dart', t => t
   .replace('static const Color accent80 = Color(0xAA0071FF);', 'static const Color accent80 = Color(0xAAEF443B);')
   .replace('static const Color button = Color(0xFF2C8CFF);', 'static const Color button = Color(0xFFEF443B);')
   .replaceAll('primary: Colors.blue,', 'primary: Color(0xFFEF443B),'), 'kırmızı vurgu rengi');
+// Plan izinleri: her masaüstü bağlantısı (kartlar, geçmiş, adres defteri, alt pencereler) buradan geçer
+edit('flutter/lib/common.dart', t => replaceOnce(t,
+`    bool? isSharedPassword}) async {
+  if (isFileTransfer) {
+    await rustDeskWinManager.newFileTransfer(id,`,
+`    bool? isSharedPassword}) async {
+  final nvaDenied = await _nvaSessionCheck(
+      id,
+      isFileTransfer
+          ? 'file'
+          : (isTcpTunneling || isRDP)
+              ? 'tunnel'
+              : isTerminal
+                  ? 'terminal'
+                  : isViewCamera
+                      ? 'camera'
+                      : 'remote');
+  if (nvaDenied != null) {
+    _nvaShowDenied(nvaDenied);
+    return;
+  }
+  if (isFileTransfer) {
+    await rustDeskWinManager.newFileTransfer(id,`), 'bağlantı öncesi plan denetimi');
+edit('flutter/lib/common.dart', t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_limits.dart'), 'utf8'), 'plan denetimi yardımcıları');
 
 const homeDart = 'flutter/lib/desktop/pages/desktop_home_page.dart';
 edit(homeDart, t => replaceOnce(t,
