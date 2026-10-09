@@ -378,6 +378,13 @@ if (cfg.appVersion) {
 edit('libs/hbb_common/src/lib.rs', t => replaceOnce(t,
   'const URL: &str = "https://api.rustdesk.com/version/latest";',
   `const URL: &str = "${cfg.apiServer}/version/latest";`), 'güncelleme denetimi adresi');
+// Girişliyken bağlanma: istemci API token'ı varsa hbbs ile KeyExchange bekler; bu yalnızca
+// RustDesk Pro'da var, açık kaynak hbbs göndermez → 18 sn sonra "Failed to secure tcp: deadline
+// has elapsed". hbbs token'ı zaten kullanmıyor; hiç göndermeyelim (düz metin sızmasın da).
+edit('src/client.rs', t => replaceOnce(t,
+  '        match Self::_start(peer, key, token, conn_type, interface.clone()).await {',
+  `        let _ = token; // NvaPrime: açık kaynak hbbs'e API token'ı gönderilmez (Pro KeyExchange yok)
+        match Self::_start(peer, key, "", conn_type, interface.clone()).await {`), 'girişliyken bağlantı (secure tcp)');
 const updRs = 'src/updater.rs';
 edit(updRs, t => replaceOnce(t,
   '"{}/rustdesk-{}-x86_64.{}",',
