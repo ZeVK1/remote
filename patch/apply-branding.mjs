@@ -111,45 +111,55 @@ edit(homeDart, t => replaceOnce(t,
     if (isIncomingOnly || bind.isOutgoingOnly()) {
       return _buildBlock(child: body);
     }
+    // Adres çubuğu ve "Bu çalışma alanı" bloğu bağlantı sayfasında çizilir; parçaları buradan verilir
+    nvaWorkspaceBuilder = _buildNvaWorkspace;
+    nvaHeaderActionsBuilder = _buildNvaActions;
     return _buildBlock(
         child: Column(children: [
-      _buildNvaHeader(context),
-      const Divider(height: 1),
       _buildNvaHelp(context),
       Expanded(child: buildRightPane(context)),
-    ]));`), 'ana düzen: üst bant + gövde (yan menü yok)');
+    ]));`), 'ana düzen: adres çubuğu + çalışma alanı (yan menü yok)');
 // Sol panelde ID kutusu artık üst bantta (yalnızca "yalnız gelen" modunda solda kalır)
 edit(homeDart, t => replaceOnce(t,
   '      if (!isOutgoingOnly) buildIDBoard(context),',
   '      if (!isOutgoingOnly && isIncomingOnly) buildIDBoard(context),'), 'sol panel: ID kutusu kaldırıldı');
 edit(homeDart, t => replaceOnce(t,
 `  buildRightPane(BuildContext context) {`,
-`  Widget _buildNvaHeader(BuildContext context) {
+`  // Adres çubuğunun sağı: hesap/lisans + menü
+  Widget _buildNvaActions(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      const SizedBox(width: 12),
+      _buildNvaAccount(context),
+      const SizedBox(width: 4),
+      buildPopupMenu(context),
+    ]);
+  }
+
+  // Ortadaki blok: "Bu çalışma alanı" + büyük ID + parola + Davet et
+  Widget _buildNvaWorkspace(BuildContext context) {
     final model = gFFI.serverModel;
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
-    return Container(
-      width: double.infinity,
-      color: Theme.of(context).colorScheme.background,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 14,
+      runSpacing: 10,
+      children: [
           Text(
-            translate("Your Desktop"),
-            style: TextStyle(fontSize: 16, color: textColor?.withOpacity(0.7)),
+            'Bu çalışma alanı',
+            style: TextStyle(fontSize: 18, color: textColor?.withOpacity(0.75)),
           ),
-          const SizedBox(width: 16),
           AnimatedBuilder(
             animation: model.serverId,
             builder: (_, __) => SelectableText(
               model.serverId.text,
               style: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 46,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1,
                   color: MyTheme.accent),
             ),
           ),
-          const SizedBox(width: 8),
           Tooltip(
             message: translate("Copy"),
             child: IconButton(
@@ -161,10 +171,15 @@ edit(homeDart, t => replaceOnce(t,
               },
             ),
           ),
-          const SizedBox(width: 20),
           _buildNvaPassword(context),
-          const SizedBox(width: 16),
           OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: MyTheme.accent,
+              side: const BorderSide(color: MyTheme.accent),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(3)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
             icon: const Icon(Icons.share_outlined, size: 18),
             label: const Text('Davet et'),
             onPressed: () {
@@ -177,12 +192,7 @@ edit(homeDart, t => replaceOnce(t,
               showToast('Davet metni kopyalandı');
             },
           ),
-          const Spacer(),
-          _buildNvaAccount(context),
-          const SizedBox(width: 8),
-          buildPopupMenu(context),
-        ],
-      ),
+      ],
     );
   }
 
@@ -308,17 +318,122 @@ edit(connDart, t => replaceOnce(t,
 edit(connDart, t => replaceOnce(t,
   "  String selectedConnectionType = 'Connect';",
   "  String selectedConnectionType = 'Connect';\n  int _nvaTab = 0; // 0: Haberler, 1: Cihazlar, 2: Oturum geçmişi"), 'connection: sekme durumu');
+// Düzen (AnyDesk benzeri): en üstte tam genişlik adres çubuğu, lisans şeridi,
+// ortada "Bu çalışma alanı", altta sekmeler (Haberler / Cihazlar / Oturum geçmişi)
 edit(connDart, t => replaceOnce(t,
-`            Divider().paddingOnly(right: 12),
-            Expanded(child: PeerTabPage()),`,
-`            _NvaTabBar(
+`    return Column(
+      children: [
+        Expanded(
+            child: Column(
+          children: [
+            Row(
+              children: [
+                Flexible(child: _buildRemoteIDTextField(context)),
+              ],
+            ).marginOnly(top: 22),
+            SizedBox(height: 12),
+            Divider().paddingOnly(right: 12),
+            Expanded(child: PeerTabPage()),
+          ],
+        ).paddingOnly(left: 12.0)),`,
+`    return Column(
+      children: [
+        Container(
+          color: Theme.of(context).colorScheme.background,
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          child: Row(children: [
+            Expanded(child: _buildRemoteIDTextField(context)),
+            if (nvaHeaderActionsBuilder != null)
+              nvaHeaderActionsBuilder!(context),
+          ]),
+        ),
+        const Divider(height: 1),
+        const NvaLicenseBanner(),
+        if (nvaWorkspaceBuilder != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 30, 24, 26),
+            child: nvaWorkspaceBuilder!(context),
+          ),
+        Expanded(
+            child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _NvaTabBar(
                 index: _nvaTab,
                 onChanged: (i) => setState(() => _nvaTab = i)),
-            Divider(height: 1).paddingOnly(right: 12),
+            const Divider(height: 1),
             Expanded(
                 child: _nvaTab == 0
                     ? const NvaNewsPanel()
-                    : (_nvaTab == 2 ? const NvaSessionsPanel() : PeerTabPage())),`), 'connection: sekmeler');
+                    : (_nvaTab == 2 ? const NvaSessionsPanel() : PeerTabPage())),
+          ],
+        ).paddingSymmetric(horizontal: 30)),`), 'connection: adres çubuğu + çalışma alanı + sekmeler');
+// Uzak ID kutusu: kart yerine tek satırlık adres çubuğu (durum noktası + kutu + Bağlan + menü)
+edit(connDart, t => replaceOnce(t,
+`      width: 320 + 20 * 2,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),`,
+`      width: double.infinity,
+      padding: EdgeInsets.zero,`), 'adres çubuğu: genişlik');
+edit(connDart, t => replaceOnce(t,
+`        child: Column(
+          children: [
+            getConnectionPageTitle(context, false).marginOnly(bottom: 15),
+            Row(
+              children: [
+                Expanded(
+                    child: RawAutocomplete<Peer>(`,
+`        child: Row(
+          children: [
+            Obx(() => Tooltip(
+                  message: stateGlobal.svcStatus.value == SvcStatus.ready
+                      ? translate('Ready')
+                      : translate('Not ready'),
+                  child: Icon(Icons.circle,
+                      size: 11,
+                      color: stateGlobal.svcStatus.value == SvcStatus.ready
+                          ? const Color(0xFF32BEA6)
+                          : Colors.orange),
+                )).marginOnly(right: 10),
+            Expanded(
+                child: Row(
+              children: [
+                Expanded(
+                    child: RawAutocomplete<Peer>(`), 'adres çubuğu: tek satır');
+edit(connDart, t => replaceOnce(t,
+`                )),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 13.0),
+              child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [`,
+`                )),
+              ],
+            )),
+            Padding(
+              padding: const EdgeInsets.only(left: 10.0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [`), 'adres çubuğu: düğmeler yanda');
+edit(connDart, t => replaceOnce(t,
+`                          style: const TextStyle(
+                            fontFamily: 'WorkSans',
+                            fontSize: 22,
+                            height: 1.4,
+                          ),`,
+`                          style: const TextStyle(
+                            fontFamily: 'WorkSans',
+                            fontSize: 17,
+                            height: 1.3,
+                          ),`), 'adres çubuğu: yazı boyu');
+edit(connDart, t => replaceOnce(t,
+`                                  : translate('Enter Remote ID'),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 15, vertical: 13)),`,
+`                                  : 'Uzak adresi girin (ID ya da ad@kullanıcı)',
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10)),`), 'adres çubuğu: ipucu');
+edit(connDart, t => replaceOnce(t,
+`    return Container(
+        constraints: const BoxConstraints(maxWidth: 600), child: w);`,
+`    return w;`), 'adres çubuğu: tam genişlik');
 // Hakkında sayfası: bağlantılar rustdesk.com yerine kendi sitemize; telif/slogan/renk
 const settingsDart = 'flutter/lib/desktop/pages/desktop_setting_page.dart';
 const site = cfg.apiServer || ('https://' + cfg.rendezvousServer);

@@ -1,6 +1,111 @@
 
 
 // ---- NvaPrime: üst sekmeler, Haberler ve Oturum geçmişi (apply-branding.mjs tarafından eklenir) ----
+
+/// Ana sayfa (desktop_home_page) tarafından doldurulur: ortadaki "Bu çalışma alanı" bloğu
+/// ve adres çubuğunun sağındaki hesap/menü düğmeleri.
+Widget Function(BuildContext)? nvaWorkspaceBuilder;
+Widget Function(BuildContext)? nvaHeaderActionsBuilder;
+
+/// Adres çubuğunun altındaki kırmızı şerit: girişsiz ya da ücretsiz planda yükseltme çağrısı.
+class NvaLicenseBanner extends StatefulWidget {
+  const NvaLicenseBanner({Key? key}) : super(key: key);
+
+  @override
+  State<NvaLicenseBanner> createState() => _NvaLicenseBannerState();
+}
+
+class _NvaLicenseBannerState extends State<NvaLicenseBanner> {
+  Map<String, dynamic>? _lic;
+  String? _loadedFor;
+
+  Future<void> _load(String user) async {
+    Map<String, dynamic>? lic;
+    if (user.isNotEmpty) {
+      try {
+        final api = await bind.mainGetApiServer();
+        final token = bind.mainGetLocalOption(key: 'access_token');
+        final resp = await http
+            .post(Uri.parse(_nvaApiUrl(api, '/api/nva/license')),
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Content-Type': 'application/json'
+                },
+                body: '{}')
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode == 200) {
+          lic = Map<String, dynamic>.from(jsonDecode(resp.body)['license']);
+        }
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _lic = lic);
+  }
+
+  Future<void> _openPanel(String path) async {
+    final api = await bind.mainGetApiServer();
+    if (api.isNotEmpty) await launchUrlString(_nvaApiUrl(api, path));
+  }
+
+  Widget _link(String text, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Text(text,
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.underline,
+              decorationColor: Colors.white)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final um = gFFI.userModel;
+      final user = um.isLogin ? um.userName.value : '';
+      if (user != _loadedFor) {
+        _loadedFor = user;
+        Future.microtask(() => _load(user));
+      }
+      const style = TextStyle(color: Colors.white, fontSize: 13);
+      List<Widget> parts;
+      if (user.isEmpty) {
+        parts = [
+          const Text('Ücretsiz kullanım (ticari olmayan). Daha fazla özellik için ',
+              style: style),
+          _link('giriş yapın', () => loginDialog()),
+          const Text(' ya da ', style: style),
+          _link('lisans alın', () => _openPanel('/dashboard?s=license')),
+          const Text('.', style: style),
+        ];
+      } else if (_lic != null && (_lic!['plan_code'] ?? 'free') == 'free') {
+        final max = (_lic!['max_devices'] ?? 0) as int;
+        parts = [
+          Text(
+              '${_lic!['plan_name']} planı (${_lic!['active_devices']}/$max cihaz, '
+              'aynı anda ${_lic!['max_concurrent_sessions'] ?? 1} oturum). ',
+              style: style),
+          _link('Profesyonel plana geçin', () => _openPanel('/dashboard?s=license')),
+          const Text(' ve tüm özelliklerin kilidini açın.', style: style),
+        ];
+      } else {
+        return const SizedBox.shrink();
+      }
+      return Container(
+        width: double.infinity,
+        color: MyTheme.accent,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: parts,
+        ),
+      );
+    });
+  }
+}
+
 class _NvaTabBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
@@ -13,19 +118,13 @@ class _NvaTabBar extends StatelessWidget {
     return InkWell(
       onTap: () => onChanged(i),
       child: Container(
-        padding: const EdgeInsets.only(bottom: 6, top: 4),
-        decoration: BoxDecoration(
-          border: Border(
-              bottom: BorderSide(
-                  width: 2,
-                  color: selected ? MyTheme.accent : Colors.transparent)),
-        ),
+        padding: const EdgeInsets.only(bottom: 10, top: 4),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 16,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? MyTheme.accent : base.withOpacity(0.55),
+            fontSize: 15,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            color: selected ? MyTheme.accent : base.withOpacity(0.45),
           ),
         ),
       ),
@@ -36,9 +135,9 @@ class _NvaTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(children: [
       _item(context, 'Haberler', 0),
-      const SizedBox(width: 28),
+      const SizedBox(width: 30),
       _item(context, 'Cihazlar', 1),
-      const SizedBox(width: 28),
+      const SizedBox(width: 30),
       _item(context, 'Oturum geçmişi', 2),
     ]);
   }
@@ -115,7 +214,7 @@ class _NvaNewsPanelState extends State<NvaNewsPanel> {
     {
       'title': 'NvaPrime Remote\'a hoş geldiniz',
       'body':
-          'Üstteki ID\'nizi karşı tarafa verin ya da kutuya karşı tarafın ID\'sini yazarak bağlanın.',
+          '"Bu çalışma alanı" numaranızı karşı tarafa verin ya da en üstteki adres çubuğuna karşı tarafın ID\'sini yazarak bağlanın.',
       'icon': 'waving_hand',
       'color1': '#EF443B',
       'color2': '#B02A8F',
@@ -169,58 +268,70 @@ class _NvaNewsPanelState extends State<NvaNewsPanel> {
   Widget _buildTile(Map<String, dynamic> t) {
     final c1 = _nvaColor(t['color1'], const Color(0xFFEF443B));
     final c2 = _nvaColor(t['color2'], const Color(0xFFB02A8F));
-    final label = (t['action_label'] ?? '').toString();
     final url = (t['action_url'] ?? '').toString();
+    var label = (t['action_label'] ?? '').toString();
+    if (label.isEmpty && url.isNotEmpty) label = 'Daha fazla bilgi';
     return InkWell(
       onTap: url.isEmpty ? null : () => _nvaOpen(url),
       child: Container(
         width: 235,
         height: 180,
-        padding: const EdgeInsets.all(16),
+        clipBehavior: Clip.hardEdge,
         decoration: BoxDecoration(
           gradient: LinearGradient(
               colors: [c1, c2],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(3),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(_nvaIcon(t['icon']), color: Colors.white70, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
+            // AnyDesk kutucuklarındaki gibi büyük, soluk simge
+            Positioned(
+              right: -18,
+              bottom: -18,
+              child: Icon(_nvaIcon(t['icon']),
+                  size: 120, color: Colors.white.withOpacity(0.12)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(15, 16, 15, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
                     (t['title'] ?? '').toString(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
+                        fontSize: 16,
+                        height: 1.25,
                         fontWeight: FontWeight.w700),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Text(
-                (t['body'] ?? '').toString(),
-                maxLines: 5,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    color: Colors.white, fontSize: 13, height: 1.3),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Text(
+                      (t['body'] ?? '').toString(),
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.92),
+                          fontSize: 13,
+                          height: 1.35),
+                    ),
+                  ),
+                  if (label.isNotEmpty)
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Text('$label →',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Colors.white)),
+                    ),
+                ],
               ),
             ),
-            if (label.isNotEmpty)
-              Align(
-                alignment: Alignment.bottomRight,
-                child: Text('$label →',
-                    style: const TextStyle(color: Colors.white, fontSize: 13)),
-              ),
           ],
         ),
       ),
@@ -237,7 +348,7 @@ class _NvaNewsPanelState extends State<NvaNewsPanel> {
           .map(_buildTile)
           .toList();
       return SingleChildScrollView(
-        padding: const EdgeInsets.only(top: 14, right: 12, bottom: 16),
+        padding: const EdgeInsets.only(top: 16, bottom: 16),
         child: Wrap(spacing: 8, runSpacing: 8, children: tiles),
       );
     });
