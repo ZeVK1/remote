@@ -136,6 +136,20 @@ edit(homeDart, t => replaceOnce(t,
               },
             ),
           ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.share_outlined, size: 18),
+            label: const Text('Davet et'),
+            onPressed: () {
+              // Karşı tarafa gönderilecek hazır mesaj: ID + tek kullanımlık parola + indirme adresi
+              final msg = 'NvaPrime Remote ile bana bağlanabilirsiniz:\\n' +
+                  'ID: ' + model.serverId.text + '\\n' +
+                  'Parola: ' + model.serverPasswd.text + '\\n' +
+                  'İndir: ${cfg.apiServer || 'https://' + cfg.rendezvousServer}';
+              Clipboard.setData(ClipboardData(text: msg));
+              showToast('Davet metni kopyalandı');
+            },
+          ),
           const Spacer(),
           _buildNvaAccount(context),
           const SizedBox(width: 8),
