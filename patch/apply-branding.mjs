@@ -306,7 +306,7 @@ edit(settingsDart, t => replaceOnce(t,
   "launchUrlString('" + site + "');"), 'hakkında: website bağlantısı');
 edit(settingsDart, t => replaceOnce(t,
   "'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Ltd.\\n$license',",
-  "'© ${DateTime.now().toString().substring(0, 4)} " + cfg.company + ". RustDesk (© Purslane Ltd.) tabanlıdır, AGPL-3.0.\\n$license',"), 'hakkında: telif metni');
+  "'© ${DateTime.now().toString().substring(0, 4)} " + cfg.company + ". Bazı bölümler © Purslane Ltd. AGPL-3.0.\\n$license',"), 'hakkında: telif metni');
 edit(settingsDart, t => replaceOnce(t,
   "translate('Slogan_tip'),",
   "'Herkes için ücretsiz ve açık kaynak uzak masaüstü.',"), 'hakkında: slogan');
