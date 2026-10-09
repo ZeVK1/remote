@@ -452,6 +452,74 @@ edit(settingsDart, t => replaceOnce(t,
 edit(settingsDart, t => replaceOnce(t,
   "decoration: const BoxDecoration(color: Color(0xFF2c8cff)),",
   "decoration: const BoxDecoration(color: Color(0xFFEF443B)),"), 'hakkında: renk');
+// Ayarlar > Hesap: lisans/paket kartı (plan, cihaz kotası, özellikler, web paneli bağlantıları)
+edit(settingsDart, t => replaceOnce(t,
+  "import 'package:url_launcher/url_launcher_string.dart';",
+  "import 'package:url_launcher/url_launcher_string.dart';\nimport 'package:http/http.dart' as http;"), 'ayarlar: http importu');
+edit(settingsDart, t => replaceOnce(t,
+  "        _Card(title: 'Account', children: [accountAction(), useInfo()]),",
+  "        _Card(title: 'Account', children: [accountAction(), useInfo()]),\n        const _NvaAccountDetails(),"), 'ayarlar: hesap sayfasına lisans kartı');
+edit(settingsDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_settings.dart'), 'utf8'), 'ayarlar: lisans kartı sınıfı');
+// Sürüm + "Güncellemeleri denetle". RustDesk, adı "RustDesk" olmayan derlemeyi "özel istemci" sayıp güncelleme
+// denetimini ve arayüzünü kapatır; bizim kendi sürüm sunucumuz olduğu için açılır.
+edit('src/common.rs', t => replaceOnce(t,
+`pub fn check_software_update() {
+    if is_custom_client() {
+        return;
+    }
+`,
+`pub fn check_software_update() {
+    // NvaPrime: kendi sürüm sunucumuz var; özel istemcide de denetlenir
+`), 'güncelleme denetimi: özel istemcide de');
+edit('flutter/lib/common.dart', t => replaceOnce(t,
+`    if (!bind.isCustomClient()) {
+      platformFFI.registerEventHandler(
+          kCheckSoftwareUpdateFinish,`,
+`    if (true) {
+      platformFFI.registerEventHandler(
+          kCheckSoftwareUpdateFinish,`), 'güncelleme denetimi: açılışta');
+edit(settingsDart, t => replaceOnce(t,
+`        if (!isWeb && !bind.isCustomClient())
+          _OptionCheckBox(
+            context,
+            'Check for software update on startup',`,
+`        if (!isWeb)
+          _OptionCheckBox(
+            context,
+            'Check for software update on startup',`), 'ayarlar: başlangıçta güncelleme denetimi seçeneği');
+edit(homeDart, t => replaceOnce(t,
+`    if (!bind.isCustomClient() &&
+        updateUrl.isNotEmpty &&
+        !isCardClosed &&
+        bind.mainUriPrefixSync().contains('rustdesk')) {
+      final isToUpdate = (isWindows || isMacOS) && bind.mainIsInstalled();
+      String btnText = isToUpdate ? 'Update' : 'Download';
+      GestureTapCallback onPressed = () async {
+        final Uri url = Uri.parse('https://rustdesk.com/download');
+        await launchUrl(url);
+      };
+      if (isToUpdate) {
+        onPressed = () {
+          handleUpdate(updateUrl);
+        };
+      }`,
+`    if (updateUrl.isNotEmpty && !isCardClosed) {
+      // NvaPrime: kurulumu imzayı doğrulayan arka plan güncelleyicisi yapar; RustDesk'in arayüzden
+      // indirip kuran yolu (handleUpdate) imza denetimini atladığı için burada yalnızca indirme sayfası açılır.
+      const isToUpdate = false;
+      String btnText = 'Download';
+      GestureTapCallback onPressed = () async {
+        await launchUrl(Uri.parse('${site}/dashboard?s=downloads'));
+      };`), 'ana sayfa: yeni sürüm kartı (imzalı yol)');
+edit(settingsDart, t => replaceOnce(t,
+`              SelectionArea(
+                  child: Text('\${translate('Version')}: $version')
+                      .marginSymmetric(vertical: 4.0)),`,
+`              SelectionArea(
+                  child: Text('\${translate('Version')}: $version',
+                          style: const TextStyle(fontWeight: FontWeight.w600))
+                      .marginSymmetric(vertical: 4.0)),
+              const _NvaCheckUpdateButton().marginOnly(top: 4, bottom: 8),`), 'hakkında: güncellemeleri denetle');
 // Takma ad ile bağlanma: "ad@kullanici" yazılırsa sunucudan gerçek ID'ye çevrilir
 edit(connDart, t => replaceOnce(t,
 `  void onConnect(
@@ -503,7 +571,20 @@ edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
                     config.view_style = "adaptive".to_owned();
                     config.scroll_style = "scrollbar".to_owned();
                     store = true;
-                }`), 'eski cihaz ayarı geçişi (ekran kayması)');
+                }
+                // Görüntü kalitesi varsayılanı "dengeli"den "en iyi"ye çıktı; eski kayıtlar bir kez taşınır
+                // (işaret sayesinde kullanıcı sonradan "dengeli" seçerse değiştirilmez)
+                if !config.options.contains_key("nva-quality-v1") {
+                    if config.image_quality == "balanced" {
+                        config.image_quality = "best".to_owned();
+                    }
+                    config.options.insert("nva-quality-v1".to_owned(), "Y".to_owned());
+                    store = true;
+                }`), 'eski cihaz ayarı geçişi (ekran kayması, görüntü kalitesi)');
+// Görüntü kalitesi varsayılanı: dengeli -> en iyi (AnyDesk gibi net görüntü)
+edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
+  'self.get_string(key, "balanced", vec!["best", "low", "custom"])',
+  'self.get_string(key, "best", vec!["balanced", "low", "custom"])'), 'varsayılan görüntü kalitesi: en iyi');
 // Ana pencere varsayılan boyutu (yan menü kalktı, üst bant geniş): 800x600 -> 1100x720
 edit('flutter/windows/runner/main.cpp', t => replaceOnce(t,
   'Win32Window::Size size(800u, 600u);',
