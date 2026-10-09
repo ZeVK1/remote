@@ -1,6 +1,6 @@
 
 
-// ---- NvaPrime: Haberler paneli ve üst sekmeler (apply-branding.mjs tarafından eklenir) ----
+// ---- NvaPrime: üst sekmeler, Haberler ve Oturum geçmişi (apply-branding.mjs tarafından eklenir) ----
 class _NvaTabBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
@@ -38,99 +38,148 @@ class _NvaTabBar extends StatelessWidget {
       _item(context, 'Haberler', 0),
       const SizedBox(width: 28),
       _item(context, 'Cihazlar', 1),
+      const SizedBox(width: 28),
+      _item(context, 'Oturum geçmişi', 2),
     ]);
   }
 }
 
-class _NvaTile {
-  final String title;
-  final String body;
-  final String action;
-  final IconData icon;
-  final List<Color> colors;
-  final VoidCallback? onTap;
-  const _NvaTile(this.title, this.body, this.action, this.icon, this.colors,
-      [this.onTap]);
+Color _nvaColor(dynamic hex, Color fallback) {
+  try {
+    final s = (hex ?? '').toString().replaceAll('#', '');
+    if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
+  } catch (_) {}
+  return fallback;
 }
 
-class NvaNewsPanel extends StatelessWidget {
+IconData _nvaIcon(dynamic name) {
+  switch ((name ?? '').toString()) {
+    case 'waving_hand':
+      return Icons.waving_hand_outlined;
+    case 'devices':
+      return Icons.devices_other_outlined;
+    case 'account':
+      return Icons.account_circle_outlined;
+    case 'key':
+      return Icons.key_outlined;
+    case 'shield':
+      return Icons.shield_outlined;
+    case 'language':
+      return Icons.language_outlined;
+    case 'code':
+      return Icons.code;
+    case 'star':
+      return Icons.star_outline;
+    case 'bolt':
+      return Icons.bolt_outlined;
+    case 'support':
+      return Icons.support_agent_outlined;
+    case 'warning':
+      return Icons.warning_amber_outlined;
+    default:
+      return Icons.info_outline;
+  }
+}
+
+/// Haber kutusuna tıklanınca: yalnızca http(s) bağlantıları ve uygulama içi eylemler açılır.
+Future<void> _nvaOpen(String url) async {
+  if (url.isEmpty) return;
+  if (url == 'app:settings') {
+    DesktopTabPage.onAddSetting();
+    return;
+  }
+  if (url == 'app:login') {
+    await loginDialog();
+    return;
+  }
+  if (url.startsWith('https://') || url.startsWith('http://')) {
+    await launchUrlString(url);
+  }
+}
+
+String _nvaApiUrl(String api, String path) {
+  final base = api.endsWith('/') ? api.substring(0, api.length - 1) : api;
+  return '$base$path';
+}
+
+class NvaNewsPanel extends StatefulWidget {
   const NvaNewsPanel({Key? key}) : super(key: key);
 
-  List<_NvaTile> _tiles() {
-    final loggedIn = gFFI.userModel.isLogin;
-    return [
-      _NvaTile(
-        'NvaPrime Remote\'a hoş geldiniz',
-        'Soldaki ID\'nizi karşı tarafa verin ya da kendi bağlantınızı kurmak için üstteki kutuya karşı tarafın ID\'sini yazın.',
-        '',
-        Icons.waving_hand_outlined,
-        const [Color(0xFFEF443B), Color(0xFFB02A8F)],
-      ),
-      _NvaTile(
-        'Uzak bir cihaza nasıl bağlanılır?',
-        '1) Karşı tarafın ID\'sini yazın  2) Bağlan\'a basın  3) Karşı tarafta tek kullanımlık parolayı girin ya da isteği kabul ettirin.',
-        '',
-        Icons.devices_other_outlined,
-        const [Color(0xFF4A5560), Color(0xFF2B3138)],
-      ),
-      _NvaTile(
-        loggedIn ? 'Hesabınız bağlı' : 'Hesabınızı bağlayın',
-        loggedIn
-            ? 'Adres defteriniz ve cihaz listeniz tüm bilgisayarlarınızda aynı. Paketinizi üstteki rozetten görebilirsiniz.'
-            : 'Giriş yapın: adres defteriniz ve cihaz listeniz her bilgisayarınızda sizinle olsun. Hesap ücretsiz.',
-        loggedIn ? '' : 'Giriş yap',
-        Icons.account_circle_outlined,
-        const [Color(0xFF2F7DB8), Color(0xFF1E4F7A)],
-        loggedIn
-            ? null
-            : () async {
-                await loginDialog();
-              },
-      ),
-      _NvaTile(
-        'Başında kimse yokken erişim',
-        'Ayarlar > Güvenlik bölümünden kalıcı bir parola belirleyin; böylece ID ve parolayla her zaman bağlanabilirsiniz.',
-        'Ayarları aç',
-        Icons.key_outlined,
-        const [Color(0xFFD9352C), Color(0xFF8E1F2B)],
-        () => DesktopTabPage.onAddSetting(),
-      ),
-      _NvaTile(
-        'Güvenlik ipuçları',
-        'ID ve parolanızı yalnızca güvendiğiniz kişilerle paylaşın. Tanımadığınız bir bağlantı isteğini asla kabul etmeyin.',
-        '',
-        Icons.shield_outlined,
-        const [Color(0xFF8E3B5B), Color(0xFF5A1F3A)],
-      ),
-      _NvaTile(
-        'Web paneli',
-        'Cihazlarınızı, oturumlarınızı ve lisansınızı tarayıcıdan yönetin.',
-        'Paneli aç',
-        Icons.language_outlined,
-        const [Color(0xFF3F6E5C), Color(0xFF244336)],
-        () => launchUrlString('https://remote.nvaprime.com/dashboard'),
-      ),
-      _NvaTile(
-        'Açık kaynak',
-        'NvaPrime Remote, RustDesk\'e dayanır ve AGPL-3.0 lisanslıdır. Kaynak kodu herkese açıktır.',
-        'Kaynak kodu',
-        Icons.code,
-        const [Color(0xFF5C5F8A), Color(0xFF30325A)],
-        () => launchUrlString('https://github.com/ZeVK1/remote'),
-      ),
-    ];
+  @override
+  State<NvaNewsPanel> createState() => _NvaNewsPanelState();
+}
+
+class _NvaNewsPanelState extends State<NvaNewsPanel> {
+  // Sunucuya ulaşılamazsa gösterilen yerleşik haberler
+  static const List<Map<String, String>> _fallback = [
+    {
+      'title': 'NvaPrime Remote\'a hoş geldiniz',
+      'body':
+          'Üstteki ID\'nizi karşı tarafa verin ya da kutuya karşı tarafın ID\'sini yazarak bağlanın.',
+      'icon': 'waving_hand',
+      'color1': '#EF443B',
+      'color2': '#B02A8F',
+    },
+    {
+      'title': 'Uzak bir cihaza nasıl bağlanılır?',
+      'body':
+          '1) Karşı tarafın ID\'sini yazın  2) Bağlan\'a basın  3) Karşı tarafta tek kullanımlık parolayı girin ya da isteği kabul ettirin.',
+      'icon': 'devices',
+      'color1': '#4A5560',
+      'color2': '#2B3138',
+    },
+    {
+      'title': 'Güvenlik ipuçları',
+      'body':
+          'ID ve parolanızı yalnızca güvendiğiniz kişilerle paylaşın. Tanımadığınız bir bağlantı isteğini asla kabul etmeyin.',
+      'icon': 'shield',
+      'color1': '#8E3B5B',
+      'color2': '#5A1F3A',
+    },
+  ];
+
+  List<Map<String, dynamic>> _items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _items = _fallback.map((e) => Map<String, dynamic>.from(e)).toList();
+    _load();
   }
 
-  Widget _buildTile(_NvaTile t) {
+  Future<void> _load() async {
+    try {
+      final api = await bind.mainGetApiServer();
+      if (api.isEmpty) return;
+      final resp = await http
+          .get(Uri.parse(_nvaApiUrl(api, '/api/nva/news')))
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return;
+      final j = jsonDecode(resp.body);
+      final list = (j['items'] as List)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (list.isNotEmpty && mounted) {
+        setState(() => _items = list);
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildTile(Map<String, dynamic> t) {
+    final c1 = _nvaColor(t['color1'], const Color(0xFFEF443B));
+    final c2 = _nvaColor(t['color2'], const Color(0xFFB02A8F));
+    final label = (t['action_label'] ?? '').toString();
+    final url = (t['action_url'] ?? '').toString();
     return InkWell(
-      onTap: t.onTap,
+      onTap: url.isEmpty ? null : () => _nvaOpen(url),
       child: Container(
         width: 235,
         height: 180,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-              colors: t.colors,
+              colors: [c1, c2],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(3),
@@ -141,11 +190,11 @@ class NvaNewsPanel extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(t.icon, color: Colors.white70, size: 20),
+                Icon(_nvaIcon(t['icon']), color: Colors.white70, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    t.title,
+                    (t['title'] ?? '').toString(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -159,17 +208,17 @@ class NvaNewsPanel extends StatelessWidget {
             const SizedBox(height: 10),
             Expanded(
               child: Text(
-                t.body,
+                (t['body'] ?? '').toString(),
                 maxLines: 5,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     color: Colors.white, fontSize: 13, height: 1.3),
               ),
             ),
-            if (t.action.isNotEmpty)
+            if (label.isNotEmpty)
               Align(
                 alignment: Alignment.bottomRight,
-                child: Text('${t.action} →',
+                child: Text('$label →',
                     style: const TextStyle(color: Colors.white, fontSize: 13)),
               ),
           ],
@@ -181,14 +230,168 @@ class NvaNewsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final tiles = _tiles();
+      final loggedIn = gFFI.userModel.isLogin;
+      // Giriş yapılmışsa "giriş yap" kutusunu gösterme
+      final tiles = _items
+          .where((t) => !(loggedIn && (t['action_url'] ?? '') == 'app:login'))
+          .map(_buildTile)
+          .toList();
       return SingleChildScrollView(
         padding: const EdgeInsets.only(top: 14, right: 12, bottom: 16),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: tiles.map(_buildTile).toList(),
-        ),
+        child: Wrap(spacing: 8, runSpacing: 8, children: tiles),
+      );
+    });
+  }
+}
+
+class NvaSessionsPanel extends StatefulWidget {
+  const NvaSessionsPanel({Key? key}) : super(key: key);
+
+  @override
+  State<NvaSessionsPanel> createState() => _NvaSessionsPanelState();
+}
+
+class _NvaSessionsPanelState extends State<NvaSessionsPanel> {
+  List<Map<String, dynamic>> _items = [];
+  bool _loading = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!gFFI.userModel.isLogin) return;
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+    try {
+      final api = await bind.mainGetApiServer();
+      final token = bind.mainGetLocalOption(key: 'access_token');
+      final resp = await http
+          .post(Uri.parse(_nvaApiUrl(api, '/api/nva/sessions')),
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Content-Type': 'application/json'
+              },
+              body: '{}')
+          .timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        final j = jsonDecode(resp.body);
+        final list = (j['items'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        if (mounted) setState(() => _items = list);
+      } else {
+        if (mounted) setState(() => _error = 'Sunucu hatası (${resp.statusCode})');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Sunucuya ulaşılamadı');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _typeLabel(String t) {
+    switch (t) {
+      case 'file_transfer':
+        return 'Dosya aktarımı';
+      case 'tcp_tunnel':
+        return 'Tünel';
+      case 'view_only':
+        return 'Kamera';
+      default:
+        return 'Uzak kontrol';
+    }
+  }
+
+  String _duration(int s) {
+    if (s <= 0) return '';
+    if (s < 60) return '$s sn';
+    if (s < 3600) return '${s ~/ 60} dk';
+    return '${s ~/ 3600} sa ${(s % 3600) ~/ 60} dk';
+  }
+
+  Widget _row(BuildContext context, Map<String, dynamic> r) {
+    final out = r['direction'] == 'out';
+    final peerId = (r['peer_id'] ?? '').toString();
+    final name = (r['peer_name'] ?? '').toString();
+    final dur = _duration((r['duration_seconds'] ?? 0) as int);
+    final active = r['status'] == 'active';
+    final sub = [
+      out ? 'Giden' : 'Gelen',
+      _typeLabel((r['type'] ?? '').toString()),
+      (r['started_at'] ?? '').toString(),
+      if (active) 'devam ediyor' else if (dur.isNotEmpty) dur,
+    ].join(' · ');
+    return ListTile(
+      dense: true,
+      leading: Icon(out ? Icons.north_east : Icons.south_west,
+          color: out ? MyTheme.accent : Colors.green),
+      title: Text(name.isNotEmpty ? '$name  ($peerId)' : peerId),
+      subtitle: Text(sub),
+      trailing: out && peerId.isNotEmpty
+          ? TextButton(
+              onPressed: () => connect(context, peerId),
+              child: const Text('Tekrar bağlan'),
+            )
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (!gFFI.userModel.isLogin) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Oturum geçmişini görmek için hesabınızla giriş yapın.'),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: () async {
+                  await loginDialog();
+                  _load();
+                },
+                child: Text(translate('Login')),
+              ),
+            ],
+          ),
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Spacer(),
+            IconButton(
+              tooltip: 'Yenile',
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ]),
+          if (_error.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(_error, style: const TextStyle(color: Colors.red)),
+            ),
+          Expanded(
+            child: _items.isEmpty && !_loading
+                ? const Center(
+                    child: Text(
+                        'Henüz kayıtlı oturum yok. Hesabınıza bağlı cihazlarla yapılan bağlantılar burada listelenir.',
+                        textAlign: TextAlign.center))
+                : ListView.separated(
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (c, i) => _row(c, _items[i]),
+                  ),
+          ),
+        ],
       );
     });
   }

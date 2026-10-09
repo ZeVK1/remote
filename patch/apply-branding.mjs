@@ -189,10 +189,10 @@ edit(homeDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'b
 const connDart = 'flutter/lib/desktop/pages/connection_page.dart';
 edit(connDart, t => replaceOnce(t,
   "import 'package:flutter_hbb/consts.dart';",
-  "import 'package:flutter_hbb/consts.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';"), 'connection: importlar');
+  "import 'package:flutter_hbb/consts.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';\nimport 'package:http/http.dart' as http;"), 'connection: importlar');
 edit(connDart, t => replaceOnce(t,
   "  String selectedConnectionType = 'Connect';",
-  "  String selectedConnectionType = 'Connect';\n  int _nvaTab = 0; // 0: Haberler, 1: Cihazlar"), 'connection: sekme durumu');
+  "  String selectedConnectionType = 'Connect';\n  int _nvaTab = 0; // 0: Haberler, 1: Cihazlar, 2: Oturum geçmişi"), 'connection: sekme durumu');
 edit(connDart, t => replaceOnce(t,
 `            Divider().paddingOnly(right: 12),
             Expanded(child: PeerTabPage()),`,
@@ -201,7 +201,27 @@ edit(connDart, t => replaceOnce(t,
                 onChanged: (i) => setState(() => _nvaTab = i)),
             Divider(height: 1).paddingOnly(right: 12),
             Expanded(
-                child: _nvaTab == 0 ? const NvaNewsPanel() : PeerTabPage()),`), 'connection: sekmeler');
+                child: _nvaTab == 0
+                    ? const NvaNewsPanel()
+                    : (_nvaTab == 2 ? const NvaSessionsPanel() : PeerTabPage())),`), 'connection: sekmeler');
+// Hakkında sayfası: bağlantılar rustdesk.com yerine kendi sitemize; telif/slogan/renk
+const settingsDart = 'flutter/lib/desktop/pages/desktop_setting_page.dart';
+const site = cfg.apiServer || ('https://' + cfg.rendezvousServer);
+edit(settingsDart, t => replaceOnce(t,
+  "launchUrlString('https://rustdesk.com/privacy.html');",
+  "launchUrlString('" + site + "/privacy');"), 'hakkında: gizlilik bağlantısı');
+edit(settingsDart, t => replaceOnce(t,
+  "launchUrlString('https://rustdesk.com');",
+  "launchUrlString('" + site + "');"), 'hakkında: website bağlantısı');
+edit(settingsDart, t => replaceOnce(t,
+  "'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Ltd.\\n$license',",
+  "'© ${DateTime.now().toString().substring(0, 4)} " + cfg.company + ". RustDesk (© Purslane Ltd.) tabanlıdır, AGPL-3.0.\\n$license',"), 'hakkında: telif metni');
+edit(settingsDart, t => replaceOnce(t,
+  "translate('Slogan_tip'),",
+  "'Herkes için ücretsiz ve açık kaynak uzak masaüstü.',"), 'hakkında: slogan');
+edit(settingsDart, t => replaceOnce(t,
+  "decoration: const BoxDecoration(color: Color(0xFF2c8cff)),",
+  "decoration: const BoxDecoration(color: Color(0xFFEF443B)),"), 'hakkında: renk');
 // Alttaki "kendi sunucunuzu kurun" reklamı kaldırılsın
 edit(connDart, t => replaceOnce(t,
   '            if (!isIncomingOnly) setupServerWidget(),',
