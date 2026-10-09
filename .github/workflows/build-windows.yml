@@ -3,7 +3,7 @@ name: Build NvaPrime (Windows)
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    tags: ["[0-9]*"]   # etiket = ürün sürümü (config.json -> appVersion), ör. 1.4.6-2
 
 env:
   RUST_VERSION: "1.75"
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: c
         run: |
-          echo "tag=$(node -p "require('./config.json').upstreamTag")" >> "$GITHUB_OUTPUT"
+          echo "tag=$(node -p "require('./config.json').appVersion")" >> "$GITHUB_OUTPUT"
           echo "name=$(node -p "require('./config.json').appName")" >> "$GITHUB_OUTPUT"
 
   bridge:
@@ -183,12 +183,25 @@ jobs:
           pip3 install -r requirements.txt
           python3 ./generate.py -f ../../dist/ -o . -e ../../dist/${APP}.exe
           popd
-          VER=$(node -p "require('../config.json').upstreamTag")
+          VER=$(node -p "require('../config.json').appVersion")
           mkdir -p ../out
           # Ad "install.exe" ile bitmeli: cift tiklayinca kurulum ekrani acilir; digeri tasinabilir (portable) calisir
           cp target/release/rustdesk-portable-packer.exe "../out/${APP}-${VER}-install.exe"
           cp target/release/rustdesk-portable-packer.exe "../out/${APP}-${VER}-portable.exe"
           cd ../out && sha256sum *.exe | tee SHA256SUMS.txt
+      - name: Sign update package
+        working-directory: .
+        env:
+          NVA_UPDATE_SIGNING_KEY: ${{ secrets.NVA_UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$NVA_UPDATE_SIGNING_KEY" ]; then
+            echo "::warning::NVA_UPDATE_SIGNING_KEY tanimli degil: guncelleme imzasi uretilmedi, otomatik guncelleme calismaz."
+            exit 0
+          fi
+          VER=$(node -p "require('./config.json').appVersion")
+          node patch/sign-update.mjs "out/${APP}-${VER}-portable.exe"
+          ls -l out
+
       - name: Source archive (AGPL-3.0 corresponding source)
         working-directory: .
         run: |
@@ -197,8 +210,14 @@ jobs:
           git -c safe.directory='*' ls-files -z --recurse-submodules | xargs -0 tar --transform "s,^,${APP}-source-${VER}/," -czf ../out/${APP}-source-${VER}.tar.gz
       - uses: actions/upload-artifact@v4
         with: { name: nvaprime-windows, path: out }
+      - name: Check tag matches app version
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: .
+        run: |
+          VER=$(node -p "require('./config.json').appVersion")
+          if [ "${GITHUB_REF_NAME}" != "$VER" ]; then echo "::error::Etiket (${GITHUB_REF_NAME}) config.json appVersion ($VER) ile ayni olmali"; exit 1; fi
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          prerelease: true
+          prerelease: false
           files: out/*

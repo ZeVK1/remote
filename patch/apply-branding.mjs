@@ -254,11 +254,68 @@ edit(homeDart, t => replaceOnce(t,
                   child: Text(
                     translate("Your Desktop"),`), 'sol panel: tekrar eden başlık');
 
+// 7) Uzaktan (otomatik) güncelleme: kendi sunucumuz + GitHub sürümleri + İMZA DOĞRULAMA
+if (cfg.appVersion) {
+  // Ürün sürümü (ör. 1.4.6-2): RustDesk "1.4.6-N" biçimini ve sürüm karşılaştırmasını kendi içinde destekler
+  edit('Cargo.toml', t => replaceOnce(t, 'version = "1.4.6"', `version = "${cfg.appVersion}"`), 'ürün sürümü');
+}
+edit('libs/hbb_common/src/lib.rs', t => replaceOnce(t,
+  'const URL: &str = "https://api.rustdesk.com/version/latest";',
+  `const URL: &str = "${cfg.apiServer}/version/latest";`), 'güncelleme denetimi adresi');
+const updRs = 'src/updater.rs';
+edit(updRs, t => replaceOnce(t,
+  '"{}/rustdesk-{}-x86_64.{}",',
+  `"{}/${cfg.appName}-{}-portable.{}",`), 'güncelleme dosya adı');
+edit(updRs, t => replaceOnce(t,
+  'const DUR_ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);',
+  'const DUR_ONE_DAY: Duration = Duration::from_secs(60 * 60 * 4);'), 'denetim aralığı: 4 saat');
+if (!cfg.updatePublicKey) throw new Error('config.json: updatePublicKey gerekli (imzasız güncelleme kabul edilmez)');
+edit(updRs, t => replaceOnce(t,
+  "        // We have checked if the `conns` is empty before, but we need to check again.",
+`        // NvaPrime: yalnızca bizim anahtarımızla imzalanmış sürümler kurulur (sunucu/depo ele geçirilse bile)
+        if let Err(e) = verify_update_signature(&client, &download_url, &file_path) {
+            log::error!("Update signature check failed: {}", e);
+            std::fs::remove_file(&file_path).ok();
+            bail!("Update signature check failed: {}", e);
+        }
+        // We have checked if the \`conns\` is empty before, but we need to check again.`), 'imza doğrulama çağrısı');
+edit(updRs, t => t.replace(/\s*$/, '\n') + `
+/// "<dosya>.sig" = Ed25519 imzalı (imza||özet) 96 bayt; özet, indirilen dosyanın SHA-256'sıdır.
+fn verify_update_signature(
+    client: &reqwest::blocking::Client,
+    download_url: &str,
+    file_path: &PathBuf,
+) -> ResultType<()> {
+    use hbb_common::sodiumoxide::crypto::sign;
+    use sha2::{Digest, Sha256};
+    const UPDATE_PK_B64: &str = "${cfg.updatePublicKey}";
+    let Some(pk) = crate::common::get_rs_pk(UPDATE_PK_B64) else {
+        bail!("Invalid update public key");
+    };
+    let resp = client.get(format!("{}.sig", download_url)).send()?;
+    if !resp.status().is_success() {
+        bail!("Failed to download the signature: {}", resp.status());
+    }
+    let signed = resp.bytes()?;
+    let Ok(signed_digest) = sign::verify(&signed, &pk) else {
+        bail!("Signature mismatch");
+    };
+    let mut hasher = Sha256::new();
+    let mut f = std::fs::File::open(file_path)?;
+    std::io::copy(&mut f, &mut hasher)?;
+    let digest = hasher.finalize();
+    if digest.as_slice() != signed_digest.as_slice() {
+        bail!("Update file digest mismatch");
+    }
+    Ok(())
+}
+`, 'imza doğrulama işlevi');
+
 if (cfg.apiServer) {
   edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
     'pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();',
-    `pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new(HashMap::from([("api-server".to_owned(), "${cfg.apiServer}".to_owned())]));`),
-    'api-server varsayılanı');
+    `pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new(HashMap::from([("api-server".to_owned(), "${cfg.apiServer}".to_owned()), ("allow-auto-update".to_owned(), "Y".to_owned())]));`),
+    'api-server + otomatik güncelleme varsayılanları');
 }
 
 // 2) Windows exe adı: kod, exe adının "<APP_NAME>.exe" olmasını bekler (kurulum/servis/--server)
