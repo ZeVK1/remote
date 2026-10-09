@@ -31,6 +31,10 @@ function edit(rel, fn, label) {
   console.log(`ok  ${rel} :: ${label}`);
 }
 function replaceOnce(text, from, to) {
+  if (text.includes('\r\n')) { // CRLF'li dosyalarda çok satırlı yamalar için
+    from = from.replace(/\r?\n/g, '\r\n');
+    to = to.replace(/\r?\n/g, '\r\n');
+  }
   if (!text.includes(from)) return text;
   return text.replace(from, () => to);
 }
@@ -43,6 +47,103 @@ edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
   `pub const RENDEZVOUS_SERVERS: &[&str] = &["${cfg.rendezvousServer}"];`), 'RENDEZVOUS_SERVERS');
 edit('libs/hbb_common/src/config.rs', t => t.replace(
   /pub const RS_PUB_KEY: &str = "[^"]*";/, () => `pub const RS_PUB_KEY: &str = "${cfg.publicKey}";`), 'RS_PUB_KEY');
+
+// Uzak ekran pencereden büyükken fare kenara gelince görüntünün kayması (scrollauto + original)
+// yerine: görüntü pencereye sığsın, kayma olmasın.
+edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
+  'keys::OPTION_VIEW_STYLE => self.get_string(key, "original", vec!["adaptive"]),',
+  'keys::OPTION_VIEW_STYLE => self.get_string(key, "adaptive", vec!["original"]),'), 'varsayılan görünüm: adaptive');
+edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
+  'self.get_string(key, "scrollauto", vec!["scrolledge", "scrollbar"])',
+  'self.get_string(key, "scrollbar", vec!["scrollauto", "scrolledge"])'), 'varsayılan kaydırma: scrollbar');
+
+// 5) Arayüz: AnyDesk benzeri düzen (kırmızı vurgu + üstte büyük "çalışma alanı" ID bandı)
+edit('flutter/lib/common.dart', t => t
+  .replace('static const Color accent = Color(0xFF0071FF);', 'static const Color accent = Color(0xFFEF443B);')
+  .replace('static const Color accent50 = Color(0x770071FF);', 'static const Color accent50 = Color(0x77EF443B);')
+  .replace('static const Color accent80 = Color(0xAA0071FF);', 'static const Color accent80 = Color(0xAAEF443B);')
+  .replace('static const Color button = Color(0xFF2C8CFF);', 'static const Color button = Color(0xFFEF443B);')
+  .replaceAll('primary: Colors.blue,', 'primary: Color(0xFFEF443B),'), 'kırmızı vurgu rengi');
+
+const homeDart = 'flutter/lib/desktop/pages/desktop_home_page.dart';
+edit(homeDart, t => replaceOnce(t,
+`    return _buildBlock(
+        child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buildLeftPane(context),
+        if (!isIncomingOnly) const VerticalDivider(width: 1),
+        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+      ],
+    ));`,
+`    final body = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buildLeftPane(context),
+        if (!isIncomingOnly) const VerticalDivider(width: 1),
+        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+      ],
+    );
+    if (isIncomingOnly || bind.isOutgoingOnly()) {
+      return _buildBlock(child: body);
+    }
+    return _buildBlock(
+        child: Column(children: [
+      _buildNvaHeader(context),
+      const Divider(height: 1),
+      Expanded(child: body),
+    ]));`), 'ana düzen: üst bant + gövde');
+// Sol panelde ID kutusu artık üst bantta (yalnızca "yalnız gelen" modunda solda kalır)
+edit(homeDart, t => replaceOnce(t,
+  '      if (!isOutgoingOnly) buildIDBoard(context),',
+  '      if (!isOutgoingOnly && isIncomingOnly) buildIDBoard(context),'), 'sol panel: ID kutusu kaldırıldı');
+edit(homeDart, t => replaceOnce(t,
+`  buildRightPane(BuildContext context) {`,
+`  Widget _buildNvaHeader(BuildContext context) {
+    final model = gFFI.serverModel;
+    final textColor = Theme.of(context).textTheme.titleLarge?.color;
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.background,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            translate("Your Desktop"),
+            style: TextStyle(fontSize: 16, color: textColor?.withOpacity(0.7)),
+          ),
+          const SizedBox(width: 16),
+          AnimatedBuilder(
+            animation: model.serverId,
+            builder: (_, __) => SelectableText(
+              model.serverId.text,
+              style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w600,
+                  color: MyTheme.accent),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: translate("Copy"),
+            child: IconButton(
+              icon: Icon(Icons.copy_rounded,
+                  size: 20, color: textColor?.withOpacity(0.6)),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: model.serverId.text));
+                showToast(translate("Copied"));
+              },
+            ),
+          ),
+          const Spacer(),
+          buildPopupMenu(context),
+        ],
+      ),
+    );
+  }
+
+  buildRightPane(BuildContext context) {`), 'üst bant (_buildNvaHeader)');
 
 if (cfg.apiServer) {
   edit('libs/hbb_common/src/config.rs', t => replaceOnce(t,
