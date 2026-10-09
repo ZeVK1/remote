@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: c
         run: |
-          echo "tag=$(node -p "require('./config.json').appVersion")" >> "$GITHUB_OUTPUT"
+          echo "tag=$(node -p "require('./config.json').upstreamTag")" >> "$GITHUB_OUTPUT"
           echo "name=$(node -p "require('./config.json').appName")" >> "$GITHUB_OUTPUT"
 
   bridge:
@@ -205,7 +205,7 @@ jobs:
       - name: Source archive (AGPL-3.0 corresponding source)
         working-directory: .
         run: |
-          VER=$(node -p "require('./config.json').upstreamTag")
+          VER=$(node -p "require('./config.json').appVersion")
           cd rustdesk
           git -c safe.directory='*' ls-files -z --recurse-submodules | xargs -0 tar --transform "s,^,${APP}-source-${VER}/," -czf ../out/${APP}-source-${VER}.tar.gz
       - uses: actions/upload-artifact@v4
