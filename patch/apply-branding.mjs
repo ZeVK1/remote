@@ -236,6 +236,28 @@ edit(settingsDart, t => replaceOnce(t,
 edit(settingsDart, t => replaceOnce(t,
   "decoration: const BoxDecoration(color: Color(0xFF2c8cff)),",
   "decoration: const BoxDecoration(color: Color(0xFFEF443B)),"), 'hakkında: renk');
+// Takma ad ile bağlanma: "ad@kullanici" yazılırsa sunucudan gerçek ID'ye çevrilir
+edit(connDart, t => replaceOnce(t,
+`  void onConnect(
+      {bool isFileTransfer = false,
+      bool isViewCamera = false,
+      bool isTerminal = false}) {
+    var id = _idController.id;
+    connect(context, id,`,
+`  void onConnect(
+      {bool isFileTransfer = false,
+      bool isViewCamera = false,
+      bool isTerminal = false}) async {
+    var id = _idController.id;
+    if (id.contains('@') && !RegExp(r'^[0-9]+@').hasMatch(id)) {
+      final resolved = await _nvaResolveAlias(id);
+      if (resolved == null) {
+        showToast('Takma ad bulunamadı: ' + id);
+        return;
+      }
+      id = resolved;
+    }
+    connect(context, id,`), 'connection: takma ad çözümleme');
 // Alttaki "kendi sunucunuzu kurun" reklamı kaldırılsın
 edit(connDart, t => replaceOnce(t,
   '            if (!isIncomingOnly) setupServerWidget(),',

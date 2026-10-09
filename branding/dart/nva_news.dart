@@ -396,3 +396,20 @@ class _NvaSessionsPanelState extends State<NvaSessionsPanel> {
     });
   }
 }
+
+/// "ad@kullanici" takma adını sunucudan gerçek cihaz ID'sine çevirir; bulunamazsa null.
+Future<String?> _nvaResolveAlias(String alias) async {
+  try {
+    final api = await bind.mainGetApiServer();
+    if (api.isEmpty) return null;
+    final resp = await http
+        .get(Uri.parse(_nvaApiUrl(
+            api, '/api/nva/resolve?alias=' + Uri.encodeQueryComponent(alias))))
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) return null;
+    final id = (jsonDecode(resp.body)['id'] ?? '').toString();
+    return RegExp(r'^[0-9]{6,20}$').hasMatch(id) ? id : null;
+  } catch (_) {
+    return null;
+  }
+}
