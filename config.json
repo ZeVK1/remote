@@ -6,7 +6,7 @@
   "rendezvousServer": "remote.nvaprime.com",
   "publicKey": "RiWZ5Tu8RIwcERg8nodXLboijblzfnQZL4+DuY81Djc=",
   "apiServer": "https://remote.nvaprime.com",
-  "appVersion": "1.4.6-3",
+  "appVersion": "1.4.6-4",
   "updatePublicKey": "UFzQq7RHECM036Bb0zI0XXFY6JhMBNs8euEruOg2pno=",
   "updateReleaseBase": "https://github.com/ZeVK1/remote/releases"
 }
