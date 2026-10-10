@@ -7,6 +7,9 @@
 Widget Function(BuildContext)? nvaWorkspaceBuilder;
 Widget Function(BuildContext)? nvaHeaderActionsBuilder;
 
+/// Ana ekran sekmesi: 0 Haberler, 1 Cihazlar, 2 Oturum geçmişi (ana menüden de değiştirilir)
+final nvaMainTab = 0.obs;
+
 /// Adres çubuğunun altındaki kırmızı şerit: girişsiz ya da ücretsiz planda yükseltme çağrısı.
 class NvaLicenseBanner extends StatefulWidget {
   const NvaLicenseBanner({Key? key}) : super(key: key);
@@ -38,6 +41,8 @@ class _NvaLicenseBannerState extends State<NvaLicenseBanner> {
         }
       } catch (_) {}
     }
+    // Adres defteri sekmesi plana göre görünür (girişsizken RustDesk'in kendi "giriş yapın" ekranı kalır)
+    nvaAllowAddressBook.value = lic == null || lic['allow_address_book'] != false;
     if (mounted) setState(() => _lic = lic);
   }
 
@@ -426,16 +431,67 @@ class _NvaSessionsPanelState extends State<NvaSessionsPanel> {
     return '${s ~/ 3600} sa ${(s % 3600) ~/ 60} dk';
   }
 
+  // AnyDesk'teki "oturum yorumu": oturuma not yazılır, web panelinde de görünür
+  Future<void> _editNote(Map<String, dynamic> r) async {
+    final ctrl = TextEditingController(text: (r['note'] ?? '').toString());
+    gFFI.dialogManager.show((setState, close, context) {
+      Future<void> save() async {
+        try {
+          final api = await bind.mainGetApiServer();
+          final token = bind.mainGetLocalOption(key: 'access_token');
+          final resp = await http
+              .post(Uri.parse(_nvaApiUrl(api, '/api/nva/session-note')),
+                  headers: {
+                    'Authorization': 'Bearer $token',
+                    'Content-Type': 'application/json'
+                  },
+                  body: jsonEncode({'id': r['id'], 'note': ctrl.text}))
+              .timeout(const Duration(seconds: 8));
+          if (resp.statusCode == 200) {
+            if (mounted) this.setState(() => r['note'] = ctrl.text.trim());
+            close();
+            showToast('Not kaydedildi');
+          } else {
+            showToast('Not kaydedilemedi (${resp.statusCode})');
+          }
+        } catch (_) {
+          showToast('Sunucuya ulaşılamadı');
+        }
+      }
+
+      return CustomAlertDialog(
+        title: const Text('Oturum notu'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLength: 500,
+            maxLines: 4,
+            decoration: const InputDecoration(
+                hintText: 'Bu oturumda ne yapıldı? (ör. yazıcı sürücüsü kuruldu)'),
+          ),
+        ),
+        actions: [
+          dialogButton('Cancel', onPressed: close, isOutline: true),
+          dialogButton('OK', onPressed: save),
+        ],
+        onCancel: close,
+      );
+    });
+  }
+
   Widget _row(BuildContext context, Map<String, dynamic> r) {
     final out = r['direction'] == 'out';
     final peerId = (r['peer_id'] ?? '').toString();
     final name = (r['peer_name'] ?? '').toString();
     final dur = _duration((r['duration_seconds'] ?? 0) as int);
     final active = r['status'] == 'active';
+    final note = (r['note'] ?? '').toString();
     final sub = [
       out ? 'Giden' : 'Gelen',
       _typeLabel((r['type'] ?? '').toString()),
-      (r['started_at'] ?? '').toString(),
+      nvaLocalTime((r['started_at'] ?? '').toString()),
       if (active) 'devam ediyor' else if (dur.isNotEmpty) dur,
     ].join(' · ');
     return ListTile(
@@ -443,13 +499,21 @@ class _NvaSessionsPanelState extends State<NvaSessionsPanel> {
       leading: Icon(out ? Icons.north_east : Icons.south_west,
           color: out ? MyTheme.accent : Colors.green),
       title: Text(name.isNotEmpty ? '$name  ($peerId)' : peerId),
-      subtitle: Text(sub),
-      trailing: out && peerId.isNotEmpty
-          ? TextButton(
-              onPressed: () => connect(context, peerId),
-              child: const Text('Tekrar bağlan'),
-            )
-          : null,
+      subtitle: Text(note.isEmpty ? sub : '$sub\nNot: $note'),
+      isThreeLine: note.isNotEmpty,
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          tooltip: note.isEmpty ? 'Not ekle' : 'Notu düzenle',
+          icon: Icon(note.isEmpty ? Icons.note_add_outlined : Icons.sticky_note_2,
+              size: 18),
+          onPressed: () => _editNote(r),
+        ),
+        if (out && peerId.isNotEmpty)
+          TextButton(
+            onPressed: () => connect(context, peerId),
+            child: const Text('Tekrar bağlan'),
+          ),
+      ]),
     );
   }
 
@@ -506,6 +570,221 @@ class _NvaSessionsPanelState extends State<NvaSessionsPanel> {
       );
     });
   }
+}
+
+// ---- Oturum daveti (AnyDesk "Davet Et") ----
+
+/// Davet penceresi: davet metnini kopyala ya da bir ID / takma ada "bana bağlanın" daveti gönder.
+void nvaShowInviteDialog(String myId, String password, String downloadUrl) {
+  final toCtrl = TextEditingController();
+  final msgCtrl = TextEditingController();
+  final sending = false.obs;
+  final error = ''.obs;
+  gFFI.dialogManager.show((setState, close, context) {
+    void copyText() {
+      final msg = 'NvaPrime Remote ile bana bağlanabilirsiniz:\n' +
+          'ID: ' + myId + '\n' +
+          'Parola: ' + password + '\n' +
+          'İndir: ' + downloadUrl;
+      Clipboard.setData(ClipboardData(text: msg));
+      showToast('Davet metni kopyalandı');
+    }
+
+    Future<void> send() async {
+      final to = toCtrl.text.trim();
+      if (to.isEmpty) {
+        error.value = 'Karşı tarafın ID\'sini ya da takma adını (ad@kullanıcı) yazın.';
+        return;
+      }
+      sending.value = true;
+      error.value = '';
+      try {
+        final api = await bind.mainGetApiServer();
+        final token = bind.mainGetLocalOption(key: 'access_token');
+        final resp = await http
+            .post(Uri.parse(_nvaApiUrl(api, '/api/nva/invite')),
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Content-Type': 'application/json'
+                },
+                body: jsonEncode({
+                  'to': to.replaceAll(' ', ''),
+                  'from': myId.replaceAll(' ', ''),
+                  'message': msgCtrl.text.trim(),
+                }))
+            .timeout(const Duration(seconds: 8));
+        final j = jsonDecode(resp.body);
+        if (resp.statusCode == 200 && j is Map && j['ok'] == true) {
+          close();
+          showToast('Davet gönderildi (2 dakika geçerli)');
+        } else {
+          error.value = (j is Map ? j['error'] : null)?.toString() ??
+              'Davet gönderilemedi (${resp.statusCode}).';
+        }
+      } catch (_) {
+        error.value = 'Sunucuya ulaşılamadı.';
+      }
+      sending.value = false;
+    }
+
+    return CustomAlertDialog(
+      title: const Text('Davet et'),
+      content: SizedBox(
+        width: 460,
+        child: Obx(() => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Aşağıdaki ID\'ye ya da takma ada oturum daveti gönderin; karşı tarafın ekranında "bağlan" bildirimi çıkar.'),
+                const SizedBox(height: 10),
+                if (!gFFI.userModel.isLogin)
+                  Row(children: [
+                    const Expanded(
+                        child: Text('Davet göndermek için hesabınızla giriş yapın.',
+                            style: TextStyle(color: Colors.orange))),
+                    TextButton(
+                        onPressed: () => loginDialog(),
+                        child: Text(translate('Login'))),
+                  ])
+                else ...[
+                  TextField(
+                    controller: toCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                        labelText: 'ID ya da ad@kullanıcı'),
+                    onSubmitted: (_) => send(),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: msgCtrl,
+                    maxLength: 200,
+                    decoration: const InputDecoration(
+                        labelText: 'Mesaj (isteğe bağlı)'),
+                  ),
+                ],
+                if (error.value.isNotEmpty)
+                  Text(error.value, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 8),
+                const Text('Davet 2 dakika geçerlidir. Yalnızca NvaPrime hesabıyla giriş yapmış cihazlara gönderilebilir.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Divider(height: 24),
+                Row(children: [
+                  const Expanded(
+                      child: Text('Ya da ID, parola ve indirme bağlantısını içeren metni kopyalayın:')),
+                  TextButton.icon(
+                    onPressed: copyText,
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('Metni kopyala'),
+                  ),
+                ]),
+              ],
+            )),
+      ),
+      actions: [
+        dialogButton('Cancel', onPressed: close, isOutline: true),
+        Obx(() => dialogButton('Davet gönder',
+            onPressed: (sending.value || !gFFI.userModel.isLogin) ? null : send)),
+      ],
+      onCancel: close,
+    );
+  });
+}
+
+/// Görünmez bileşen: bu cihaza gelen davetleri yoklar (hesaba bağlı cihazlarda) ve "bağlan" sorusunu gösterir.
+class NvaInviteListener extends StatefulWidget {
+  const NvaInviteListener({Key? key}) : super(key: key);
+
+  @override
+  State<NvaInviteListener> createState() => _NvaInviteListenerState();
+}
+
+class _NvaInviteListenerState extends State<NvaInviteListener> {
+  Timer? _timer;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 8), _poll);
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _poll() async {
+    if (_busy || !mounted) return;
+    _busy = true;
+    try {
+      final api = await bind.mainGetApiServer();
+      if (api.isEmpty) return;
+      final id = await bind.mainGetMyId();
+      final uuid = await bind.mainGetUuid();
+      if (id.isEmpty || uuid.isEmpty) return;
+      final resp = await http
+          .post(Uri.parse(_nvaApiUrl(api, '/api/nva/invites')),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'id': id, 'uuid': uuid}))
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return;
+      final items = (jsonDecode(resp.body)['items'] as List?) ?? [];
+      for (final it in items.whereType<Map>()) {
+        _show(Map<String, dynamic>.from(it));
+      }
+    } catch (_) {
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _show(Map<String, dynamic> inv) async {
+    final peer = (inv['from_peer'] ?? '').toString();
+    if (!RegExp(r'^[0-9]{6,20}$').hasMatch(peer)) return;
+    final user = (inv['from_user'] ?? '').toString();
+    final host = (inv['from_host'] ?? '').toString();
+    final msg = (inv['message'] ?? '').toString();
+    try {
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (_) {}
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: const Text('Oturum daveti'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$user sizi kendi bilgisayarına bağlanmaya davet ediyor.'),
+            const SizedBox(height: 6),
+            Text('ID: ${formatID(peer)}${host.isNotEmpty ? '  ($host)' : ''}',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (msg.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('"$msg"', style: const TextStyle(fontStyle: FontStyle.italic)),
+            ],
+            const SizedBox(height: 10),
+            const Text(
+                'Tanımadığınız birinden gelen daveti kabul etmeyin. Bağlanırsanız karşı tarafın onayı yine istenir.',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          dialogButton('Reddet', onPressed: close, isOutline: true),
+          dialogButton('Bağlan', onPressed: () {
+            close();
+            connect(context, peer);
+          }),
+        ],
+        onCancel: close,
+      );
+    }, tag: 'nva-invite-$peer');
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// "ad@kullanici" takma adını sunucudan gerçek cihaz ID'sine çevirir; bulunamazsa null.

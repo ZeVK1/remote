@@ -88,6 +88,34 @@ edit('flutter/lib/common.dart', t => replaceOnce(t,
   if (isFileTransfer) {
     await rustDeskWinManager.newFileTransfer(id,`), 'bağlantı öncesi plan denetimi');
 edit('flutter/lib/common.dart', t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_limits.dart'), 'utf8'), 'plan denetimi yardımcıları');
+// Cihazlar sekmesi (AnyDesk gibi): simgelerin yanında ad (Son oturumlar, Favoriler, Keşfedilenler, Adres defteri);
+// planda adres defteri yoksa o sekme gizlenir
+const peerTabDart = 'flutter/lib/common/widgets/peer_tab_page.dart';
+edit(peerTabDart, t => replaceOnce(t,
+`                        child: Icon(model.tabIcon(t), color: color)
+                            .paddingSymmetric(horizontal: 4),`,
+`                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(model.tabIcon(t), color: color, size: 16),
+                          const SizedBox(width: 6),
+                          Text(model.tabTooltip(t),
+                              style: TextStyle(color: color, fontSize: 14)),
+                        ]).paddingSymmetric(horizontal: 6),`), 'cihaz sekmeleri: yazılı');
+edit(peerTabDart, t => replaceOnce(t,
+`        children: model.visibleEnabledOrderedIndexs.map((t) {
+          final selected = model.currentTab == t;`,
+`        children: model.visibleEnabledOrderedIndexs
+            .where((t) =>
+                nvaAllowAddressBook.value || t != PeerTabIndex.ab.index)
+            .map((t) {
+          final selected = model.currentTab == t;`), 'cihaz sekmeleri: plana göre adres defteri');
+edit(peerTabDart, t => replaceOnce(t,
+`  Widget _createPeersView() {
+    final model = Provider.of<PeerTabModel>(context);`,
+`  Widget _createPeersView() {
+    final model = Provider.of<PeerTabModel>(context);
+    if (!nvaAllowAddressBook.value && model.currentTab == PeerTabIndex.ab.index) {
+      Future.microtask(() => handleTabSelection(PeerTabIndex.recent.index));
+    }`), 'cihaz sekmeleri: gizli sekmeden çık');
 
 const homeDart = 'flutter/lib/desktop/pages/desktop_home_page.dart';
 edit(homeDart, t => replaceOnce(t,
@@ -125,14 +153,74 @@ edit(homeDart, t => replaceOnce(t,
   '      if (!isOutgoingOnly && isIncomingOnly) buildIDBoard(context),'), 'sol panel: ID kutusu kaldırıldı');
 edit(homeDart, t => replaceOnce(t,
 `  buildRightPane(BuildContext context) {`,
-`  // Adres çubuğunun sağı: hesap/lisans + menü
+`  // Adres çubuğunun sağı: hesap/lisans + ana menü
   Widget _buildNvaActions(BuildContext context) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       const SizedBox(width: 12),
       _buildNvaAccount(context),
       const SizedBox(width: 4),
-      buildPopupMenu(context),
+      _buildNvaMainMenu(context),
     ]);
+  }
+
+  // AnyDesk'teki gibi ana menü (önceden yalnızca Ayarlar açılıyordu)
+  Widget _buildNvaMainMenu(BuildContext context) {
+    final textColor = Theme.of(context).textTheme.titleLarge?.color;
+    PopupMenuItem<int> item(int v, IconData icon, String text) =>
+        PopupMenuItem<int>(
+          value: v,
+          height: 36,
+          child: Row(children: [
+            Icon(icon, size: 18, color: textColor?.withOpacity(0.7)),
+            const SizedBox(width: 12),
+            Text(text, style: const TextStyle(fontSize: 14)),
+          ]),
+        );
+    return PopupMenuButton<int>(
+      tooltip: 'Menü',
+      icon: Icon(Icons.menu, color: textColor?.withOpacity(0.7)),
+      onSelected: (v) async {
+        switch (v) {
+          case 0:
+            DesktopTabPage.onAddSetting();
+            break;
+          case 1:
+            DesktopSettingPage.switch2page(SettingsTabKey.safety);
+            break;
+          case 2:
+            nvaMainTab.value = 1;
+            gFFI.peerTabModel.setCurrentTab(PeerTabIndex.ab.index);
+            break;
+          case 3:
+            nvaMainTab.value = 2;
+            break;
+          case 4:
+            final dir = bind.mainVideoSaveDirectory(root: false);
+            try {
+              await Directory(dir).create(recursive: true);
+            } catch (_) {}
+            await launchUrl(Uri.file(dir));
+            break;
+          case 5:
+            await launchUrl(Uri.parse('${cfg.apiServer || 'https://' + cfg.rendezvousServer}/dashboard'));
+            break;
+          case 6:
+            DesktopSettingPage.switch2page(SettingsTabKey.about);
+            break;
+        }
+      },
+      itemBuilder: (_) => [
+        item(0, Icons.settings_outlined, translate('Settings')),
+        item(1, Icons.lock_outline, 'Çalışma alanı parolasını değiştir'),
+        if (nvaAllowAddressBook.value)
+          item(2, Icons.contacts_outlined, translate('Address book')),
+        item(3, Icons.history, 'Oturum geçmişi'),
+        item(4, Icons.videocam_outlined, 'Oturum kayıtları'),
+        const PopupMenuDivider(),
+        item(5, Icons.language, 'Web paneli'),
+        item(6, Icons.info_outline, 'Sürüm ve güncellemeler'),
+      ],
+    );
   }
 
   // Ortadaki blok: "Bu çalışma alanı" + büyük ID + parola + Davet et
@@ -182,15 +270,11 @@ edit(homeDart, t => replaceOnce(t,
             ),
             icon: const Icon(Icons.share_outlined, size: 18),
             label: const Text('Davet et'),
-            onPressed: () {
-              // Karşı tarafa gönderilecek hazır mesaj: ID + tek kullanımlık parola + indirme adresi
-              final msg = 'NvaPrime Remote ile bana bağlanabilirsiniz:\\n' +
-                  'ID: ' + model.serverId.text + '\\n' +
-                  'Parola: ' + model.serverPasswd.text + '\\n' +
-                  'İndir: ${cfg.apiServer || 'https://' + cfg.rendezvousServer}';
-              Clipboard.setData(ClipboardData(text: msg));
-              showToast('Davet metni kopyalandı');
-            },
+            // Davet: ID / takma ada "bana bağlanın" bildirimi ya da ID + parola + indirme adresini kopyala
+            onPressed: () => nvaShowInviteDialog(
+                model.serverId.text,
+                model.serverPasswd.text,
+                '${cfg.apiServer || 'https://' + cfg.rendezvousServer}'),
           ),
       ],
     );
@@ -307,14 +391,14 @@ edit(homeDart, t => replaceOnce(t,
   buildRightPane(BuildContext context) {`), 'üst bant (_buildNvaHeader)');
 edit(homeDart, t => replaceOnce(t,
   "import 'package:flutter_hbb/common/widgets/custom_password.dart';",
-  "import 'package:flutter_hbb/common/widgets/custom_password.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:http/http.dart' as http;"), 'import: login + http');
+  "import 'package:flutter_hbb/common/widgets/custom_password.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/models/peer_tab_model.dart';\nimport 'package:http/http.dart' as http;"), 'import: login + http');
 edit(homeDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_account.dart'), 'utf8'), 'lisans rozeti sınıfı');
 
 // 6) Sağ bölme: AnyDesk'teki gibi üst sekmeler (Haberler / Cihazlar) + haber kutuları
 const connDart = 'flutter/lib/desktop/pages/connection_page.dart';
 edit(connDart, t => replaceOnce(t,
   "import 'package:flutter_hbb/consts.dart';",
-  "import 'package:flutter_hbb/consts.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';\nimport 'package:http/http.dart' as http;"), 'connection: importlar');
+  "import 'package:flutter_hbb/consts.dart';\nimport 'package:flutter/services.dart';\nimport 'package:flutter_hbb/common/widgets/login.dart';\nimport 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';\nimport 'package:http/http.dart' as http;"), 'connection: importlar');
 edit(connDart, t => replaceOnce(t,
   "  String selectedConnectionType = 'Connect';",
   "  String selectedConnectionType = 'Connect';\n  int _nvaTab = 0; // 0: Haberler, 1: Cihazlar, 2: Oturum geçmişi"), 'connection: sekme durumu');
@@ -358,16 +442,19 @@ edit(connDart, t => replaceOnce(t,
             child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _NvaTabBar(
-                index: _nvaTab,
-                onChanged: (i) => setState(() => _nvaTab = i)),
+            Obx(() => _NvaTabBar(
+                index: nvaMainTab.value,
+                onChanged: (i) => nvaMainTab.value = i)),
             const Divider(height: 1),
             Expanded(
-                child: _nvaTab == 0
+                child: Obx(() => nvaMainTab.value == 0
                     ? const NvaNewsPanel()
-                    : (_nvaTab == 2 ? const NvaSessionsPanel() : PeerTabPage())),
+                    : (nvaMainTab.value == 2
+                        ? const NvaSessionsPanel()
+                        : PeerTabPage()))),
           ],
-        ).paddingSymmetric(horizontal: 30)),`), 'connection: adres çubuğu + çalışma alanı + sekmeler');
+        ).paddingSymmetric(horizontal: 30)),
+        const NvaInviteListener(),`), 'connection: adres çubuğu + çalışma alanı + sekmeler');
 // Uzak ID kutusu: kart yerine tek satırlık adres çubuğu (durum noktası + kutu + Bağlan + menü)
 edit(connDart, t => replaceOnce(t,
 `      width: 320 + 20 * 2,
@@ -460,6 +547,88 @@ edit(settingsDart, t => replaceOnce(t,
   "        _Card(title: 'Account', children: [accountAction(), useInfo()]),",
   "        _Card(title: 'Account', children: [accountAction(), useInfo()]),\n        const _NvaAccountDetails(),"), 'ayarlar: hesap sayfasına lisans kartı');
 edit(settingsDart, t => t.replace(/\s*$/, '\n') + fs.readFileSync(path.join(root, 'branding/dart/nva_settings.dart'), 'utf8'), 'ayarlar: lisans kartı sınıfı');
+edit(settingsDart, t => replaceOnce(t,
+`                _header(context),
+                Flexible(child: _listView(tabs: _settingTabs())),`,
+`                _header(context),
+                _nvaSettingsSearch(),
+                Flexible(
+                    child: Obx(() => _listView(
+                        tabs: _settingTabs()
+                            .where((t) => _nvaSettingMatches(
+                                t.key, t.label, nvaSettingsQuery.value))
+                            .toList()))),`), 'ayarlar: arama kutusu');
+// Gelen bağlantı penceresi: AnyDesk'teki izin profilleri gibi tek tıkla önayar
+// ("Ekran paylaşımı": yalnızca görüntü + ses; "Tam erişim": hepsi). İzinler bağlantı süresince geçerlidir.
+const cmDart = 'flutter/lib/desktop/pages/server_page.dart';
+edit(cmDart, t => replaceOnce(t,
+`  @override
+  Widget build(BuildContext context) {
+    final crossAxisCount = 4;`,
+`  void _nvaPreset(Map<String, bool> p) {
+    p.forEach((name, enabled) {
+      bind.cmSwitchPermission(connId: client.id, name: name, enabled: enabled);
+    });
+    setState(() {
+      client.keyboard = p['keyboard']!;
+      client.clipboard = p['clipboard']!;
+      client.audio = p['audio']!;
+      client.file = p['file']!;
+      client.restart = p['restart']!;
+      client.recording = p['recording']!;
+    });
+  }
+
+  Widget _nvaPresetRow() {
+    Widget b(String label, IconData icon, Map<String, bool> p) => TextButton.icon(
+          onPressed: () => _nvaPreset(p),
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          icon: Icon(icon, size: 15),
+          label: Text(label, style: const TextStyle(fontSize: 12)),
+        );
+    return Wrap(alignment: WrapAlignment.center, spacing: 4, children: [
+      b('Ekran paylaşımı', Icons.visibility_outlined, {
+        'keyboard': false,
+        'clipboard': false,
+        'audio': true,
+        'file': false,
+        'restart': false,
+        'recording': false,
+      }),
+      b('Tam erişim', Icons.lock_open_outlined, {
+        'keyboard': true,
+        'clipboard': true,
+        'audio': true,
+        'file': true,
+        'restart': true,
+        'recording': true,
+      }),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final crossAxisCount = 4;`), 'gelen bağlantı: profil önayarları');
+edit(cmDart, t => replaceOnce(t,
+`          Text(
+            translate("Permissions"),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ).marginOnly(left: 4.0, bottom: 8.0),`,
+`          Text(
+            translate("Permissions"),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ).marginOnly(left: 4.0, bottom: 2.0),
+          if (client.type_() != ClientType.camera)
+            _nvaPresetRow().marginOnly(bottom: 4.0),`), 'gelen bağlantı: önayar satırı');
+edit(cmDart, t => replaceOnce(t,
+`      width: double.infinity,
+      height: 160.0,
+      margin: EdgeInsets.all(5.0),`,
+`      width: double.infinity,
+      height: 196.0,
+      margin: EdgeInsets.all(5.0),`), 'gelen bağlantı: izin kutusu yüksekliği');
 // Sürüm + "Güncellemeleri denetle". RustDesk, adı "RustDesk" olmayan derlemeyi "özel istemci" sayıp güncelleme
 // denetimini ve arayüzünü kapatır; bizim kendi sürüm sunucumuz olduğu için açılır.
 edit('src/common.rs', t => replaceOnce(t,

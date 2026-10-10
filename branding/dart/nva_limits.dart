@@ -1,5 +1,20 @@
 
 // ---- NvaPrime: plan izinleri, bağlantı başlamadan önce (apply-branding.mjs tarafından eklenir) ----
+
+/// Planın adres defteri izni (lisans bilgisi gelince güncellenir). Kapalıysa Adres defteri sekmesi gizlenir;
+/// sunucu da bu durumda /api/ab isteğini reddeder.
+final nvaAllowAddressBook = true.obs;
+
+/// UTC "YYYY-MM-DD HH:MM:SS" (sunucu saati) -> bilgisayarın yerel saati, "YYYY-MM-DD HH:MM"
+String nvaLocalTime(String utc) {
+  try {
+    final d = DateTime.parse(utc.trim().replaceFirst(' ', 'T') + 'Z').toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  } catch (_) {
+    return utc;
+  }
+}
 /// Girişli hesabın planı bu bağlantıya izin vermiyorsa nedenini döner, izin varsa null.
 /// Girişsiz kullanım ve sunucuya ulaşılamaması bağlantıyı engellemez.
 Future<String?> _nvaSessionCheck(String id, String type) async {

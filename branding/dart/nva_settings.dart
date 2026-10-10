@@ -1,5 +1,50 @@
 
 
+// ---- NvaPrime: ayarlarda arama (AnyDesk gibi; sol menüyü anahtar kelimeye göre süzer) ----
+final nvaSettingsQuery = ''.obs;
+
+const Map<SettingsTabKey, String> _nvaSettingKeywords = {
+  SettingsTabKey.general:
+      'genel tema koyu açık dil başlangıç güncelleme otomatik kayıt klasör ses kayıt dizin tepsi uyku',
+  SettingsTabKey.safety:
+      'güvenlik parola şifre kalıcı tek kullanımlık izin erişim iki adımlı 2fa doğrulama ip beyaz liste kabul onay pano dosya klavye yeniden başlat gizlilik',
+  SettingsTabKey.network:
+      'ağ sunucu kimlik id röle relay proxy vekil soket websocket bağlantı port',
+  SettingsTabKey.display:
+      'görüntü kalite fps kare hız codec kodek ölçek uyarlanabilir kaydırma imleç çözünürlük',
+  SettingsTabKey.plugin: 'eklenti',
+  SettingsTabKey.account: 'hesap giriş çıkış lisans paket plan kullanıcı',
+  SettingsTabKey.printer: 'yazıcı yazdır',
+  SettingsTabKey.about: 'hakkında sürüm güncelle versiyon gizlilik lisans telif',
+};
+
+String _nvaLower(String s) =>
+    s.replaceAll('İ', 'i').replaceAll('I', 'ı').toLowerCase();
+
+bool _nvaSettingMatches(SettingsTabKey key, String label, String q) {
+  final query = _nvaLower(q.trim());
+  if (query.isEmpty) return true;
+  final hay = _nvaLower('${translate(label)} ${_nvaSettingKeywords[key] ?? ''}');
+  return query.split(RegExp(r'\s+')).every(hay.contains);
+}
+
+Widget _nvaSettingsSearch() {
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+    child: TextField(
+      onChanged: (v) => nvaSettingsQuery.value = v,
+      style: const TextStyle(fontSize: 14),
+      decoration: const InputDecoration(
+        isDense: true,
+        prefixIcon: Icon(Icons.search, size: 18),
+        prefixIconConstraints: BoxConstraints(minWidth: 34),
+        hintText: 'Ayarlarda ara',
+        contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      ),
+    ),
+  );
+}
+
 // ---- NvaPrime: Hakkında > "Güncellemeleri denetle" (apply-branding.mjs tarafından eklenir) ----
 // Yalnızca sürüm sunucusuna sorar. Kurulumu, imzayı doğrulayan arka plan güncelleyicisi (servis) yapar;
 // arayüzdeki RustDesk "Güncelle" yolu imza denetimini atladığı için kullanılmaz.
